@@ -1,0 +1,30 @@
+Description: 'AWS CloudFormation Sample Template MyWebServerInstance: with connection security groups and keypair'
+Parameters:
+  KeyPair:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instances. Linked to AWS Parameter
+    Type: AWS::EC2::KeyPair::KeyName
+    Default : Rahul_Mumbai
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+
+Resources:
+  MyWebServerInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      AvailabilityZone: ap-south-1a
+      ImageId: ami-0d2692b6acea72ee6
+      InstanceType: t2.micro
+      Tags:
+        -
+          Key: NAME
+          Value: "Rahul"
+        # -
+        #   Key : Environment
+        #   Value: !Ref Environment
+        # -
+        #   Key : Owner
+        #   Value: !Ref Owner
+
+      SecurityGroups:
+        # we reference the output here, using the Fn::ImportValue function
+        - !ImportValue WBSecurityGroup
+      KeyName: !Ref KeyPair

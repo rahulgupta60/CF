@@ -1,0 +1,54 @@
+  # aws cloudformation validate-template --template-body file://webserver2.yaml
+  # aws cloudformation deploy --template-file webserver2.yaml --stack-name s4
+  # aws cloudformation delete-stack --stack-name s4
+   
+  Description: 'AWS CloudFormation Sample Template MyWebServerInstance: with connection security groups and keypair'
+  Parameters:
+    KeyPair:
+      Description: Name of an existing EC2 KeyPair to enable SSH access to the instances. Linked to AWS Parameter
+      Type: AWS::EC2::KeyPair::KeyName
+      Default : Rahul_Mumbai
+      ConstraintDescription: must be the name of an existing EC2 KeyPair.
+    EnvironmentName:
+      Description: Environment Name
+      Type: String
+      Default : development
+      AllowedValues: [development, production]
+      ConstraintDescription: must be development or production
+
+  Mappings:
+    AWSRegionArch2AMI:
+      us-east-1:
+        HVM64: ami-0d2692b6acea72ee6
+      ap-south-1:
+        HVM64: ami-009110a2bf8d7dd0a
+        AZ
+        
+    EnvironmentToInstanceType:
+      development:
+        instanceType: t2.micro
+      # we want a bigger instance type in production but i am not doing this
+      production:
+        instanceType: t2.micro
+
+  Resources:
+    MyWebServerInstance:
+      Type: AWS::EC2::Instance
+      Properties:
+        AvailabilityZone: ap-south-1a
+        ImageId: !FindInMap [AWSRegionArch2AMI, !Ref 'AWS::Region', HVM64]
+        InstanceType: !FindInMap [EnvironmentToInstanceType, !Ref 'EnvironmentName', instanceType]
+        Tags:
+          -
+            Key: Name
+            Value: "Rahul"
+          -
+            Key : Environment
+            Value: !Ref EnvironmentName
+          # -
+          #   Key : Owner
+          #   Value: !Ref Owner
+        SecurityGroups:
+          # we reference the output here, using the Fn::ImportValue function
+          - !ImportValue WBSecurityGroup
+        KeyName: !Ref KeyPair

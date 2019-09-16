@@ -1,0 +1,20 @@
+Resources:
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: Enable SSH/HTTP access
+      GroupName: TCP/HTTP SecurityGroup CF
+      Tags: 
+        -
+          Key: "SecurityGroupType"
+          Value: "TCP & HTTP"
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp:!Ref: SSHLocation
+          FromPort: 80
+          ToPort: 80
+          IpProtocol: 
+          

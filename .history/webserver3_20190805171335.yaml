@@ -1,0 +1,141 @@
+# aws cloudformation validate-template --template-body file://webserver2.yaml
+# aws cloudformation deploy --template-file webserver2.yaml --stack-name s4
+# aws cloudformation delete-stack --stack-name s4
+  
+Description: 'AWS CloudFormation Sample Template MyWebServerInstance: with connection security groups and keypair'
+Parameters:
+  KeyPair:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instances. Linked to AWS Parameter
+    Type: AWS::EC2::KeyPair::KeyName
+    Default : Rahul_Mumbai
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+  EnvironmentName:
+    Description: Environment Name
+    Type: String
+    Default : development
+    # you can pass like both way
+    # AllowedValues: [development, production]
+    AllowedValues:
+    - development
+    - production
+    ConstraintDescription: must be development or production
+    
+Conditions:
+  CreateProdResources: !Equals [ !Ref EnvironmentName, production ]
+
+Mappings:
+  AWSRegionArch2AMI:
+    us-east-1:
+      HVM64: ami-0d2692b6acea72ee6 # aws ami
+      AZ: us-east-1a
+    ap-south-1:
+      HVM64: ami-0d2692b6acea72ee6 # aws ami
+      AZ: ap-south-1a
+      
+  EnvironmentToInstanceType:
+    development:
+      instanceType: t2.micro
+    # we want a bigger instance type in production but i am not doing this
+    production:
+      instanceType: t2.micro
+
+Resources:
+  WebServerHost:
+    Type: AWS::EC2::Instance
+    Metadata:
+      Comment: Install a simple PHP application
+      AWS::CloudFormation::Init:
+        config:
+          packages:
+            yum:
+              httpd24: []
+              php70: []
+          groups:
+            apache: {}
+          users:
+            "apache":
+              groups:
+                - "apache"
+          sources:
+            "/home/ec2-user/aws-cli": "https://github.com/aws/aws-cli/tarball/master"
+          files:
+            "/var/www/html/index.php":
+              content: !Sub |
+                <?php echo '<h1>AWS CloudFormation sample PHP application for ${AWS::StackName}</h1>'; ?>
+              mode: '000644'
+              owner: apache
+              group: apache
+          commands:
+            test:
+              command: "echo \"$MAGIC\" > test.txt"
+              env:
+                MAGIC: "I come from the environment!"
+              cwd: "~"
+          services:
+            sysvinit:
+              httpd:
+                enabled: 'true'
+                ensureRunning: 'true'
+              sendmail:
+                enabled: 'false'
+                ensureRunning: 'false'
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT5M
+    Properties:
+      AvailabilityZone: !FindInMap [AWSRegionArch2AMI, !Ref "AWS::Region", AZ]
+      ImageId: !FindInMap [AWSRegionArch2AMI, !Ref 'AWS::Region', HVM64]
+      InstanceType: !FindInMap [EnvironmentToInstanceType, !Ref 'EnvironmentName', instanceType]
+      UserData:
+        "Fn::Base64":
+          !Sub |
+            #!/bin/bash -xe
+            # Get the latest CloudFormation package
+            yum update -y aws-cfn-bootstrap
+            # Start cfn-init
+            /opt/aws/bin/cfn-init -s ${AWS::StackId} -r WebServerHost --region ${AWS::Region} || error_exit 'Failed to run cfn-init'
+            # Start up the cfn-hup daemon to listen for changes to the EC2 instance metadata
+            /opt/aws/bin/cfn-hup || error_exit 'Failed to start cfn-hup'
+            # All done so signal success
+            /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource WebServerHost --region ${AWS::Region}
+      Tags:
+        -
+          Key: Name
+          Value: "WebServerHost  From CF"
+        -
+          Key : Environment
+          Value: !Ref EnvironmentName
+        # -
+        #   Key : Owner
+        #   Value: !Ref Owner
+      SecurityGroups:
+        # we reference the output here, using the Fn::ImportValue function
+        - !ImportValue WBSecurityGroup
+      KeyName: !Ref KeyPair
+
+  NewVolume:
+    Type: "AWS::EC2::Volume"
+    Condition: CreateProdResources
+    Properties:
+      Size: 100
+      VolumeType: standard
+      AvailabilityZone:
+        !GetAtt WebServerHost.AvailabilityZone
+
+Outputs:
+  VolumeId:
+    Condition: CreateProdResources
+    Value:
+      !Ref NewVolume
+  InstanceId:
+    Description: The instance ID of the web server
+    Value:
+      Ref: WebServerHost  
+  WebsiteURL:
+    Value:
+      !Sub 'http://${WebServerHost  .PublicDnsName}/phpinfo.php'
+    Description: URL for newly created LAMP stack with php info
+  PublicIP:
+    Description: Public IP address of the web server
+    Value:
+      !GetAtt WebServerHost .PublicIp

@@ -1,0 +1,6 @@
+MYBUCKET:
+  Type: AWS::ResourceGroup::ResourceType
+  DependsOn:
+  - ResourceDependsOn
+  Properties:
+    ResourceProperties

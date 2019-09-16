@@ -1,0 +1,37 @@
+Description: 'AWS CloudFormation Sample Template SecurityGroup: Create a TCP/HTTP connection'
+Parameters:
+  SSHLocation:
+    Description: The IP address range that can be used to SSH to the EC2 instances
+    Type: String
+    MinLength: '9'
+    MaxLength: '18'
+    Default: 0.0.0.0/0
+    AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    ConstraintDescription: Must be a valid IP CIDR range of the form x.x.x.x/x
+
+Resources:
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: Enable SSH/HTTP access
+      GroupName: TCP/HTTP SecurityGroup CF
+      Tags: 
+        -
+          Key: "SecurityGroupType"
+          Value: "TCP & HTTP"
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: !Ref SSHLocation
+          FromPort: 80
+          ToPort: 80
+          IpProtocol: tcp
+          
+Outputs:
+  StackWBSecurityGroup:
+    Description: The SSH security group for our Company
+    Value: !Ref WebServerSecurityGroup
+    Export: 
+      Name: WBSecurityGroup

@@ -1,0 +1,27 @@
+# aws cloudformation deploy --template-file s3cf.yaml --stack-name s3cf --capabilities CAPABILITY_IAM
+
+Resources:
+  S3FullAccessExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+            Action:
+              - "sts:AssumeRole"
+            Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+        Version: "2012-10-17"
+      Path: /
+      Policies:
+        -
+          PolicyDocument:
+            Statement:
+              -
+                Action:
+                  - "s3:*"
+                Effect: Allow
+                Resource: "*"
+            Version: "2012-10-17"
+          PolicyName: S3-READ-FOR-EC2
+    Type: "AWS::IAM::Role"

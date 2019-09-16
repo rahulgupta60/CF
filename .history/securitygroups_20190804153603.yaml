@@ -1,0 +1,34 @@
+Resources:
+  SSHSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: Enable SSH access via port 22
+      GroupName: String
+      SecurityGroupEgress: 
+        - Egress
+      Tags: 
+        -
+          Key: "SecurityGroup"
+          Value: "TCP"
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+
+  ServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: Enable SSH access via port 22
+      GroupName: String
+      SecurityGroupEgress: 
+        - Egress
+      Tags: 
+        -
+          Key: "SecurityGroup"
+          Value: "TCP"
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22

@@ -1,0 +1,162 @@
+Parameters:
+  EnvironmentSize:
+    Type: String
+    Default: SMALL
+    AllowedValues:
+      - SMALL
+      - MEDIUM
+      - LARGE
+    Description: Select Environment Size (S,M,L)
+  DatabaseName:
+    Type: String
+    Default: wordpress
+  DatabaseUser:
+    Type: String
+    Default: wordpress
+  DatabasePassword:
+    Type: String
+    Default: r1111111ahul
+    NoEcho: true
+  TestString:
+    Type: String
+    Default: test9
+Mappings:
+  RegionMap:
+    ap-south-1:
+      "AMALINUX" : "ami-0d2692b6acea72ee6" # AMALINUX SEP 2016
+  InstanceSize:
+    SMALL:
+      "EC2" : "t2.micro"
+      "DB" : "db.t2.micro"
+    MEDIUM:
+      "EC2" : "t2.micro"
+      "DB" : "db.t2.micro"
+    LARGE:
+      "EC2" : "t2.micro"
+      "DB" : "db.t2.micro"
+Resources:
+  # DB:
+  #   Type: "AWS::RDS::DBInstance"
+  #   Properties:
+  #     AllocatedStorage: 5
+  #     StorageType: gp2
+  #     DBInstanceClass: !FindInMap [InstanceSize, !Ref EnvironmentSize, DB] # Dynamic mapping + Pseudo Parameter
+  #     DBName: !Ref DatabaseName
+  #     Engine: MySQL
+  #     MasterUsername: !Ref DatabaseUser
+  #     MasterUserPassword: !Ref DatabasePassword
+  EC2:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMALINUX] # Dynamic mapping + Pseudo Parameter
+      InstanceType: !FindInMap [InstanceSize, !Ref EnvironmentSize, EC2]
+      KeyName: Rahul_Mumbai
+      SecurityGroups:
+        - !ImportValue WBSecurityGroup
+      UserData:
+        "Fn::Base64":
+          !Sub |
+            #!/bin/bash
+            yum update -y aws-cfn-bootstrap # good practice - always do this.
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource EC2 --configsets wordpress --region ${AWS::Region}
+            yum -y update
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          wordpress:
+            - "configure_cfn"
+            - "install_wordpress"
+            - "install_node"
+            # - "config_wordpress"
+        configure_cfn:
+          files:
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.EC2.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource EC2 --configsets wordpress --region ${AWS::Region}
+              mode: "000400"
+              owner: root
+              group: root
+            /etc/cfn/cfn-hup.conf:
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+                verbose=true
+                interval=5
+              mode: "000400"
+              owner: root
+              group: root
+            /var/www/html/index2.html:
+              content: !Ref TestString
+            /tmp/subscript.sh:
+              content: !Sub |
+                  echo "Setting up NodeJS Environment"                  
+                  curl https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | sudo bash
+                  . ~/.nvm/nvm.sh
+                  nvm install v12.8.0
+                  nvm alias default v12.8.0
+                  nvm use v12.8.0
+                  echo "Setting up Yarn"
+                  curl -o- -L https://yarnpkg.com/install.sh | sudo bash
+                  export PATH="$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$PATH" 
+              mode: "777"
+              owner: root
+              group: root
+              sudo nano /etc/nginx/nginx.conf
+            /tmp/nginx/default.conf:
+              content: !Sub |
+                  server {
+                    listen         80 default_server;
+                    listen         [::]:80 default_server;
+                    server_name    localhost;
+                    root           /usr/share/nginx/html;
+                    location / {
+                        proxy_pass http://127.0.0.1:3000;
+                        proxy_http_version 1.1;
+                        proxy_set_header Upgrade $http_upgrade;
+                        proxy_set_header Connection 'upgrade';
+                        proxy_set_header Host $host;
+                        proxy_cache_bypass $http_upgrade;
+                    }
+                  }
+              mode: '000755'
+              owner: root
+              group: root
+          services:
+            sysvinit:
+              cfn-hup:
+                enabled: "true"
+                ensureRunning: "true"
+                files:
+                  - "/etc/cfn/cfn-hup.conf"
+                  - "/etc/cfn/hooks.d/cfn-auto-reloader.conf"
+                  - "/tmp/subscript.sh"
+        install_wordpress:
+          packages:
+            yum:
+              nginx: []
+          # sources:
+          #   /var/www/html: "http://wordpress.org/latest.tar.gz"
+          services:
+            sysvinit:
+              nginx:
+                enabled: "true"
+                ensureRunning: "true"
+                files:
+                  - "/etc/nginx/conf.d/default.conf"
+        install_node:
+          commands:
+            01_run_subscript:
+              cwd: "~"
+              test: test ! -e /tmp/subscript.sh
+              command:  sh /tmp/subscript.sh  
+            02_run_subscript:
+              cwd: "~"
+              test: test ! -e /tmp/subscript.sh
+              command:  sh /tmp/subscript.sh  
+            cp /tmp/nginx/default.conf /etc/nginx/conf.d/default.conf
+  # S3:
+  #   Type: "AWS::S3::Bucket"

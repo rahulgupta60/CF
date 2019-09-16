@@ -1,0 +1,14 @@
+Resources:
+s3Bucket:
+  Type: AWS::S3::Bucket
+  Properties: 
+    AccessControl: 
+    BucketName: 
+    CorsConfiguration: 
+    LifecycleConfiguration: 
+    NotificationConfiguration: 
+    VersioningConfiguration: 
+    WebsiteConfiguration: 
+    Tags:
+      - Key: key
+        Value: value

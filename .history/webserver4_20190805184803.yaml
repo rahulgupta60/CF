@@ -1,0 +1,140 @@
+# aws cloudformation validate-template --template-body file://webserver2.yaml
+# aws cloudformation deploy --template-file webserver4.yaml --stack-name webserver4 --capabilities CAPABILITY_NAMED_IAM
+# aws cloudformation delete-stack --stack-name s4
+  
+Description: 'AWS CloudFormation Sample Template MyWebServerInstance: with connection security groups and keypair'
+Parameters:
+  KeyPair:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instances. Linked to AWS Parameter
+    Type: AWS::EC2::KeyPair::KeyName
+    Default : Rahul_Mumbai
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+  EnvironmentName:
+    Description: Environment Name
+    Type: String
+    Default : development
+    # you can pass like both way
+    # AllowedValues: [development, production]
+    AllowedValues:
+    - development
+    - production
+    ConstraintDescription: must be development or production
+    
+Conditions:
+  CreateProdResources: !Equals [ !Ref EnvironmentName, production ]
+
+Mappings:
+  AWSRegionArch2AMI:
+    us-east-1:
+      HVM64: ami-0d2692b6acea72ee6 # aws ami
+      AZ: us-east-1a
+    ap-south-1:
+      HVM64: ami-0d2692b6acea72ee6 # aws ami
+      AZ: ap-south-1a
+      
+  EnvironmentToInstanceType:
+    development:
+      instanceType: t2.micro
+    # we want a bigger instance type in production but i am not doing this
+    production:
+      instanceType: t2.micro
+
+Resources:
+  S3FullAccessExecutionRole:
+    Properties:
+      RoleName: !Sub "EC2Role-${AWS::StackName}"
+      AssumeRolePolicyDocument:
+        Statement:
+            Action:
+              - "sts:AssumeRole"
+            Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+        Version: "2012-10-17"
+      Path: /
+      Policies:
+        -
+          PolicyDocument:
+            Statement:
+              -
+                Action:
+                  - "s3:*"
+                Effect: Allow
+                Resource: "*"
+            Version: "2012-10-17"
+          PolicyName: S3-READ-FOR-EC2
+    Type: "AWS::IAM::Role"
+  RootInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles: [ !Ref S3FullAccessExecutionRole ]
+  MyWebServerInstance:
+    DependsOn: RootInstanceProfile
+    Type: AWS::EC2::Instance
+    Properties:
+      AvailabilityZone: !FindInMap [AWSRegionArch2AMI, !Ref "AWS::Region", AZ]
+      ImageId: !FindInMap [AWSRegionArch2AMI, !Ref 'AWS::Region', HVM64]
+      InstanceType: !FindInMap [EnvironmentToInstanceType, !Ref 'EnvironmentName', instanceType]
+      IamInstanceProfile: !Ref RootInstanceProfile
+      UserData:
+        Fn::Base64: |
+           #!/bin/bash
+           sudo su
+           yum update -y
+           yum install httpd -y
+           curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
+           . ~/.nvm/nvm.sh
+           service httpd start
+           nvm install --lts
+           node -e "console.log('Running Node.js ' + process.version)"
+           chkconfig httpd on
+           groupadd www
+           usermod -a -G www ec2-user
+           chown -R root:www /var/www
+           chmod 2775 /var/www
+           find /var/www -type d -exec chmod 2775 {} +
+           find /var/www -type f -exec chmod 0664 {} +
+           echo "<?php phpinfo(); ?>" > /var/www/html/phpinfo.php
+      Tags:
+        -
+          Key: Name
+          Value: "MyWebServerInstance From CF"
+        -
+          Key : Environment
+          Value: !Ref EnvironmentName
+        # -
+        #   Key : Owner
+        #   Value: !Ref Owner
+      SecurityGroups:
+        # we reference the output here, using the Fn::ImportValue function
+        - !ImportValue WBSecurityGroup
+      KeyName: !Ref KeyPair
+
+  NewVolume:
+    Type: "AWS::EC2::Volume"
+    Condition: CreateProdResources
+    Properties:
+      Size: 100
+      VolumeType: standard
+      AvailabilityZone:
+        !GetAtt MyWebServerInstance.AvailabilityZone
+
+Outputs:
+  VolumeId:
+    Condition: CreateProdResources
+    Value:
+      !Ref NewVolume
+  InstanceId:
+    Description: The instance ID of the web server
+    Value:
+      Ref: MyWebServerInstance
+  WebsiteURL:
+    Value:
+      !Sub 'http://${MyWebServerInstance.PublicDnsName}/phpinfo.php'
+    Description: URL for newly created LAMP stack with php info
+  PublicIP:
+    Description: Public IP address of the web server
+    Value:
+      !GetAtt MyWebServerInstance.PublicIp

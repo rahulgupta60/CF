@@ -1,0 +1,12 @@
+Resources:
+  Type: AWS::EC2::SecurityGroup
+  Properties: 
+    GroupDescription: Enable SSH access via port 22
+    GroupName: String
+    SecurityGroupEgress: 
+      - Egress
+    SecurityGroupIngress: 
+      - Ingress
+    Tags: 
+      - Tag
+    VpcId: String

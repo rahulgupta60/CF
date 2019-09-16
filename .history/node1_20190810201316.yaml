@@ -1,0 +1,188 @@
+Parameters:
+  EnvironmentSize:
+    Type: String
+    Default: SMALL
+    AllowedValues:
+      - SMALL
+      - MEDIUM
+      - LARGE
+    Description: Select Environment Size (S,M,L)
+  DatabaseName:
+    Type: String
+    Default: wordpress
+  DatabaseUser:
+    Type: String
+    Default: wordpress
+  DatabasePassword:
+    Type: String
+    Default: r1111111ahul
+    NoEcho: true
+  TestString:
+    Type: String
+    Default: test9
+Mappings:
+  RegionMap:
+    ap-south-1:
+      "AMALINUX" : "ami-0d2692b6acea72ee6" # AMALINUX SEP 2016
+  InstanceSize:
+    SMALL:
+      "EC2" : "t2.micro"
+      "DB" : "db.t2.micro"
+    MEDIUM:
+      "EC2" : "t2.micro"
+      "DB" : "db.t2.micro"
+    LARGE:
+      "EC2" : "t2.micro"
+      "DB" : "db.t2.micro"
+Resources:
+  # DB:
+  #   Type: "AWS::RDS::DBInstance"
+  #   Properties:
+  #     AllocatedStorage: 5
+  #     StorageType: gp2
+  #     DBInstanceClass: !FindInMap [InstanceSize, !Ref EnvironmentSize, DB] # Dynamic mapping + Pseudo Parameter
+  #     DBName: !Ref DatabaseName
+  #     Engine: MySQL
+  #     MasterUsername: !Ref DatabaseUser
+  #     MasterUserPassword: !Ref DatabasePassword
+  EC2:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMALINUX] # Dynamic mapping + Pseudo Parameter
+      InstanceType: !FindInMap [InstanceSize, !Ref EnvironmentSize, EC2]
+      KeyName: Rahul_Mumbai
+      SecurityGroups:
+        - !ImportValue WBSecurityGroup
+      UserData:
+        "Fn::Base64":
+          !Sub |
+            #!/bin/bash
+            yum update -y aws-cfn-bootstrap # good practice - always do this.
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource EC2 --configsets nodejsSet --region ${AWS::Region}
+            yum -y update
+            /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource EC2 --region ${AWS::Region}
+    CreationPolicy:
+      ResourceSignal:
+        Count: "1"
+        Timeout: PT15M
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          nodejsSet:
+            - "configure_cfn"
+            - "install_node"
+            - "install_ngnix"
+        configure_cfn:
+          files:
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.EC2.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource EC2 --configsets nodejsSet --region ${AWS::Region}
+              mode: "000400"
+              owner: root
+              group: root
+            /etc/cfn/cfn-hup.conf:
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+                verbose=true
+                interval=5
+              mode: "000400"
+              owner: root
+              group: root
+            /var/www/html/index2.html:
+              content: !Ref TestString
+          services:
+            sysvinit:
+              cfn-hup:
+                enabled: "true"
+                ensureRunning: "true"
+                files:
+                  - "/etc/cfn/cfn-hup.conf"
+                  - "/etc/cfn/hooks.d/cfn-auto-reloader.conf"
+                  - "/tmp/node_install_script.sh"
+        # install_wordpress:
+        #   packages:
+        #     yum:
+        #       nginx: []
+        #   # sources:
+        #   #   /var/www/html: "http://wordpress.org/latest.tar.gz"
+        install_node:
+          files:
+            /tmp/node_install_script.sh:
+                content: !Sub |
+                    echo "Setting up NodeJS Environment"                  
+                    curl https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | sudo bash
+                    . ~/.nvm/nvm.sh
+                    nvm install v12.8.0
+                    nvm alias default v12.8.0
+                    nvm use v12.8.0
+                    echo "Setting up Yarn"
+                    curl -o- -L https://yarnpkg.com/install.sh | sudo bash
+                    export PATH="$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$PATH"
+                    echo "code need to remove"                  
+                    cd /var/www/
+                    npm install -g express-generator
+                    express app
+                    cd app
+                    npm install
+                    nohup npm start >> app.log 2>&1 &
+                mode: "777"
+                owner: root
+                group: root
+          commands:
+            01_run_node_install_subscript:
+              # cwd: "~"
+              # test: test ! -e /tmp/node_install_script.sh
+              command:  sh /tmp/node_install_script.sh  
+        install_ngnix:
+          files:
+            /tmp/nginx/app.conf:
+              content: !Sub |
+                  server {
+                        # listen 80;      
+                        # server_name    localhost;
+                        # root           /var/www/app;
+                        #access_log /var/log/nginx/app_access.log;
+                        #error_log /var/log/nginx/app_error.log;
+                        location / {
+                            proxy_pass http://127.0.0.1:3000;
+                            proxy_http_version 1.1;
+                            proxy_set_header Upgrade $http_upgrade;
+                            proxy_set_header Connection 'upgrade';
+                            proxy_set_header Host $host;
+                            proxy_cache_bypass $http_upgrade;
+                        }
+                  }
+              mode: '777'
+              owner: root
+              group: root
+          commands:
+            01_install_ngnix:
+              command: 'amazon-linux-extras install nginx1.12'
+            02_ngnix_making_copy:
+              test: test ! -e /tmp/nginx/nginx.conf
+              command: cp /etc/nginx/nginx.conf   /etc/nginx/copy_nginx_conf 
+            03_ngnix_copy:
+              test: test ! -e /etc/nginx/conf.d/app.conf
+              command: cp /tmp/nginx/app.conf   /etc/nginx/conf.d/app.conf
+            04_delete_deafult_server_line:
+              cwd: '/etc/nginx/'
+              command: cat nginx.conf | sed   -r '39,40d' >update_nginx.conf
+            05_ngnix_main_file_remove:
+              cwd: '/etc/nginx/'
+              command: rm -f nginx.conf && mv update_nginx.conf nginx.conf
+            06_ngnix_restart:
+              command: service nginx restart && chkconfig nginx on 
+          services:
+            sysvinit:
+              nginx:
+                enabled: "true"
+                ensureRunning: "true"
+                files:
+                  - "/etc/nginx/conf.d/nginx.conf"
+  # S3:
+  #   Type: "AWS::S3::Bucket"

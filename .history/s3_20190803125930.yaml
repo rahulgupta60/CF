@@ -1,0 +1,8 @@
+Resources:
+  s3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: PublicRead
+      BucketName" : public-bucket
+
+      
